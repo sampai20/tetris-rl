@@ -1,4 +1,6 @@
 import numpy as np
+import pygame
+from pygame import gfxdraw
 
 class TetrisEngine():
     '''
@@ -179,7 +181,7 @@ class TetrisEngine():
         line_mask = np.any(self.board == -1, axis=0)
         num_cleared = self.board.shape[1] - line_mask.sum()
         if num_cleared:
-            new_board = np.pad(self.board[:, line_mask], ((0, 0), (0, num_cleared)), 'constant', constant_values=(0, -1))
+            new_board = np.pad(self.board[:, line_mask], ((0, 0), (0, num_cleared)), 'constant', constant_values=(0, -1)) # type: ignore
             self.board = new_board
         return num_cleared
 
@@ -296,8 +298,6 @@ class TetrisEngine():
 
     def render(self):
         # modified from https://github.com/openai/gym/blob/master/gym/envs/classic_control/cartpole.py
-        import pygame
-        from pygame import gfxdraw
 
         screen_width, screen_height = 400, 800
         side = 20
@@ -337,6 +337,11 @@ class TetrisEngine():
         self.clock.tick(50)
         pygame.display.flip()
 
+    def close(self):
+        if self.screen is not None:
+            pygame.display.quit()
+            pygame.quit()
+
 
 
 if __name__ == '__main__':
@@ -347,7 +352,7 @@ if __name__ == '__main__':
         [1, 1, 1, 1, 1, 1, 1, -1, -1, -1],
         [1, 1, 1, 1, 1, 1, 1, 1, -1, -1]
     ]).T
-    board = np.pad(board, ((0, 0), (0, 23 - board.shape[1])), 'constant', constant_values=(-1, -1))
+    board = np.pad(board, ((0, 0), (0, 23 - board.shape[1])), mode='constant', constant_values=(-1, -1)) # type: ignore
     engine = TetrisEngine(board)
     while not engine.game_over:
         engine.render()
