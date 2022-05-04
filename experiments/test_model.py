@@ -12,18 +12,19 @@ env.reset()
 
 ob_size = env.observation_space.shape[0]
 
-actor_body = MLP(input_size=ob_size,
-                 hidden_sizes=[64],
-                 output_size=64,
-                 hidden_act=nn.ReLU,
-                 output_act=nn.ReLU)
+actor_body = nn.Sequential(
+        nn.Linear(ob_size, 64),
+        nn.ReLU(),
+        nn.Linear(64, 64),
+        nn.ReLU()
+)
 
 act_size = env.action_space.n
 actor = CategoricalPolicy(actor_body,
                           in_features=64,
                           action_dim=act_size)
 
-model_file = "data/CartPole-v1/default/seed_0/model/model_best.pt"
+model_file = "data/CartPole-v1/default/seed_2/model/model_best.pt"
 state_dict = torch.load(model_file)
 actor.load_state_dict(state_dict['actor_state_dict'])
 

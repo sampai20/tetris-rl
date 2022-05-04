@@ -1,5 +1,6 @@
 import numpy as np
 import pygame
+from copy import deepcopy
 from pygame import gfxdraw
 
 class TetrisEngine():
@@ -36,7 +37,7 @@ class TetrisEngine():
                 [(-1, -1)],
                 [(0, -1)]
         ])
-        self.PIECE_LETTERS = ['J', 'L', 'S', 'T', 'Z', 'I', 'O']
+        self.PIECE_LETTERS = ['J', 'L', 'S', 'T', 'Z', 'I', 'O', 'G']
         self.KICK_TABLES = [
                 KICK_TABLE_DEFAULT,
                 KICK_TABLE_DEFAULT,
@@ -62,10 +63,11 @@ class TetrisEngine():
                 (127, 0, 127),
                 (255, 0, 0),
                 (0, 255, 255),
-                (255, 255, 0)
+                (255, 255, 0),
+                (127, 127, 127)
         ]
         self.COMBO_TABLE = [0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5]
-        self.ATTACK_TABLE = [0, 0, 1, 2, 4]
+        self.ATTACK_TABLE = [0, 1, 3, 6, 10]
         self.T_SPIN_MULTIPLIER = 2
         self.B2B_BONUS = 1
         self.BOARD_WIDTH = 10
@@ -100,6 +102,28 @@ class TetrisEngine():
 
         self.screen = None
         self.clock = None
+
+    def copy(self, screen = False):
+        new_engine = TetrisEngine()
+        new_engine.board = self.board.copy()
+        new_engine.bags = deepcopy(self.bags)
+        new_engine.piece_index = self.piece_index
+        new_engine.piece_pos = deepcopy(self.piece_pos)
+        new_engine.piece_rot = self.piece_rot
+        new_engine.held_piece = self.held_piece
+        new_engine.used_held = self.used_held
+        new_engine.game_over = self.game_over
+        new_engine.combo = self.combo
+        new_engine.attack = self.attack
+        new_engine.back_to_back = self.back_to_back
+        new_engine.last_rotate = self.last_rotate
+        new_engine.last_kick = self.last_kick
+
+        if screen:
+            new_engine.screen = self.screen
+            new_engine.clock = self.clock
+
+        return new_engine
 
     def _rotate(self, pos, rot):
         dx, dy = pos[0], pos[1]
@@ -197,7 +221,7 @@ class TetrisEngine():
             proper, total = 0, 0
             for i in range(4):
                 square = self.piece_pos + corners[i]
-                if np.any(square < [0, 0]) or square[0] >= self.BOARD_WIDTH or self.board[tuple(square)] != -1:
+                if np.any(square < [0, 0]) or square[0] >= self.BOARD_WIDTH or square[1] >= self.board.shape[1] or self.board[tuple(square)] != -1:
                     total += 1
                     if i == self.piece_rot or i == (self.piece_rot + 1) % 4:
                         proper += 1
@@ -210,7 +234,7 @@ class TetrisEngine():
             self.combo = 0
         else:
             if tspin:
-                reward += 2 * num_clear
+                reward += 2 * self.ATTACK_TABLE[num_clear]
             else:
                 reward += self.ATTACK_TABLE[num_clear] # type: ignore
 
@@ -227,7 +251,7 @@ class TetrisEngine():
         self._new_piece()
 
         self.attack += reward
-        return reward
+        return reward + 1
 
     def _hold_piece(self):
         if self.used_held:
@@ -242,6 +266,151 @@ class TetrisEngine():
         self.used_held = True
         return True
 
+    def _expand_shifts(self, setup = tuple()):
+        cur_state = self.copy()
+        cur_state.handle_action(0)
+        states = [(cur_state.copy(), setup + (0,))]
+        while True:
+            if cur_state._piece_shift(np.array([1, 0])):
+                states.append((cur_state.copy(), states[-1][1] + (3,)))
+            else:
+                return states
+
+    def _expand_rotations(self, setup = tuple()):
+        states = [(self.copy(), setup)]
+
+        rot_left = self.copy()
+        if rot_left._rotate_piece(1):
+            states.append((rot_left, setup + (4,)))
+
+        rot_right = self.copy()
+        if rot_right._rotate_piece(3):
+            states.append((rot_right, setup + (5,)))
+        
+        rot_twice = self.copy()
+        if rot_twice._rotate_piece(1) and rot_twice._rotate_piece(1):
+            states.append((rot_twice, setup + (4, 4)))
+
+        return states
+
+    def _push_states_down(self, states):
+        _ = [state[0]._max_piece_shift(np.array([0, -1])) for state in states]
+        return [(eng, move + (6,)) for eng, move in states]
+
+    def _apply_shifts(self, states):
+        new_states = []
+        for s, m in states:
+            ss = s._expand_shifts(setup = m)
+            new_states += ss
+        return new_states
+
+    def _apply_rotations(self, states):
+        new_states = []
+        for s, m in states:
+            ss = s._expand_rotations(setup = m)
+            new_states += ss
+        return new_states
+
+    def _prune(self, states):
+        
+        cache = set()
+        pruned = []
+        for s, m in states:
+            key = tuple(map(tuple, s._rotate_offsets(s.bags[0][s.piece_index], s.piece_rot) + s.piece_pos))
+            key = tuple(sorted(key))
+            if key in cache:
+                continue
+            else:
+                cache.add(key)
+                pruned.append((s, m))
+
+        return pruned
+
+    def _clear(self, states):
+        return [(e, m + (7,), e._hard_drop()) for e, m in states]
+
+
+
+
+
+    def _get_next_states_old(self):
+
+        states = self._prune(self._expand_rotations())
+
+        ns = self._prune(self._push_states_down(self._apply_rotations(self._push_states_down(self._apply_shifts(states)))))
+
+        return self._clear(ns)
+
+        
+    def _get_next_states(self):
+
+        state_squares = lambda s : tuple(sorted(tuple(map(tuple, s._rotate_offsets(s.bags[0][s.piece_index], s.piece_rot) + s.piece_pos))))
+
+
+        states = [(self.copy(), tuple())]
+        vis = set(state_squares(states[0][0]))
+
+        cur_pos = 0
+        while cur_pos < len(states):
+            cur_state, moves = states[cur_pos]
+
+            #left
+            l = cur_state.copy()
+            res = l._piece_shift(np.array([-1, 0]))
+            if res and not (state_squares(l) in vis):
+                states.append((l, moves + (2,)))
+                vis.add(state_squares(l))
+
+            #right
+            r = cur_state.copy()
+            res = r._piece_shift(np.array([1, 0]))
+            if res and not (state_squares(r) in vis):
+                states.append((r, moves + (3,)))
+                vis.add(state_squares(r))
+
+            #down
+            d = cur_state.copy()
+            res = d._max_piece_shift(np.array([0, -1]))
+            if res and not (state_squares(d) in vis):
+                states.append((d, moves + (6,)))
+                vis.add(state_squares(d))
+
+            #rot left
+            rl = cur_state.copy()
+            res = rl._rotate_piece(1)
+            if res and not (state_squares(rl) in vis):
+                states.append((rl, moves + (4,)))
+                vis.add(state_squares(rl))
+
+            #rot right
+            rr = cur_state.copy()
+            res = rr._rotate_piece(3)
+            if res and not (state_squares(rr) in vis):
+                states.append((rr, moves + (5,)))
+                vis.add(state_squares(rr))
+
+            cur_pos += 1
+
+        return self._clear(self._prune(self._push_states_down(states)))
+
+    def _get_next_states_hold(self):
+
+        ans = self._get_next_states()
+
+        hold_state = self.copy()
+        if hold_state._hold_piece():
+            held_ans = hold_state._get_next_states()
+            prefix_held = [(s, (8,) + m, r) for s, m, r in held_ans]
+
+            ans += prefix_held
+
+        return ans
+
+
+
+
+
+
     def get_previews(self, num_previews=5):
         if self.piece_index + num_previews > 6:
             return np.concatenate((self.bags[0][self.piece_index + 1:7], self.bags[1][:num_previews + self.piece_index  - 6])) # type: ignore
@@ -254,7 +423,7 @@ class TetrisEngine():
         - 2 (3): tap left (right), i.e. move once left (right) if possible.
         - 4 (5): rotate left (right) using SRS rules.
         - 6: soft drop, i.e. send piece maximally down.
-        - 7: hard drop, i.e. send piece maximally down and place.
+        - 7: hard drop, i.e. send piece maximally down and place
         - 8: hold piece, i.e. swap out piece with currently held piece.
         '''
         reward = 0
@@ -279,6 +448,16 @@ class TetrisEngine():
             self._hold_piece()
 
         return reward
+
+    def add_garbage(self, amt):
+
+        garbage_pos = np.random.randint(self.BOARD_WIDTH)
+        garb_array = np.ones((self.BOARD_WIDTH, amt), dtype=int) * 7
+        garb_array[garbage_pos, :] = -1
+
+        self.board = np.concatenate((garb_array, self.board), axis = 1)[:, :self.BOARD_HEIGHT + 3]
+
+        
 
     def vis_board(self):
         squares = self._rotate_offsets(self.bags[0][self.piece_index], self.piece_rot) + self.piece_pos
@@ -353,19 +532,28 @@ if __name__ == '__main__':
         [1, 1, 1, 1, 1, 1, 1, 1, -1, -1]
     ]).T
     board = np.pad(board, ((0, 0), (0, 23 - board.shape[1])), mode='constant', constant_values=(-1, -1)) # type: ignore
-    engine = TetrisEngine(board)
+    engine = TetrisEngine()
+    engine.add_garbage(5)
+    engine.bags[0][0] = 3
+
     while not engine.game_over:
         engine.render()
         # print(engine.vis_board())
-        a = np.random.randint(9) # type: ignore
+        a = input()
         try:
             engine.handle_action(int(a))
         except Exception as e:
             print(e)
+        print(engine.held_piece)
         time.sleep(0.01)
 
-
-
+"""
+    for state, move, reward in engine._get_next_states_hold():
+        state.render()
+        print(reward, move)
+        input()
+        state.close()
+"""
 
 
 
