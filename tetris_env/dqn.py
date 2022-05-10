@@ -10,6 +10,7 @@ from itertools import count
 from TetrisEnv import TetrisEnv
 from models.ConvBased import ConvBasedNetwork
 from models.HeuristicOnly import HeuristicNetwork
+from models.HeuristicWithHoles import HeuristicHoleNetwork
 
 import torch
 import torch.nn as nn
@@ -43,9 +44,9 @@ class ReplayMemory(object):
 def obs_to_tensor(obs, device = device):
     torch_obs = {
             'board': torch.FloatTensor(obs['board']).to(device).unsqueeze(0),
-            'piece_mask': torch.FloatTensor(obs['piece_mask']).to(device).unsqueeze(0),
             'heuristic' : torch.FloatTensor(obs['heuristic']).to(device),
-            'other_data': torch.cat([torch.flatten(torch.FloatTensor(obs[key])).to(device) for key in obs if key not in ('board', 'piece_mask', 'heuristic')])
+            'holes' : torch.FloatTensor(obs['holes']).to(device),
+            'other_data': torch.cat([torch.flatten(torch.FloatTensor(obs[key])).to(device) for key in obs if key not in ('board', 'heuristic', 'holes')])
     }
 
     return torch_obs
@@ -69,14 +70,14 @@ EPS_END = 0.05
 EPS_DECAY = 2000
 TARGET_UPDATE = 10
 SAVE_INTERVAL = 100
-EPISODE_LEN = 150
+EPISODE_LEN = 300
 
 # pick model
-DQNetwork = HeuristicNetwork
+DQNetwork = HeuristicHoleNetwork
 
 policy_net = DQNetwork().to(device)
-save_file = 'data/heur_fixed/model_2900'
-save_dir = 'heur_hold'
+save_file = 'data/heur_hole_network/model_4300'
+save_dir = 'heur_hole_new'
 policy_net.load_state_dict(torch.load(save_file))
 target_net = DQNetwork().to(device)
 target_net.load_state_dict(policy_net.state_dict())

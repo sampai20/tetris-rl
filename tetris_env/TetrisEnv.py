@@ -45,10 +45,11 @@ class TetrisEnv(gym.Env):
         previews = np.expand_dims(engine.get_previews(), 1)
         obs["previews"] = np.where(np.expand_dims(np.arange(0, 7), 0) == previews, 1, 0)
 
-        piece_squares = engine._rotate_offsets(current_piece, engine.piece_rot) + engine.piece_pos
-        obs["piece_mask"] = np.zeros_like(obs["board"])
-        obs["piece_mask"][tuple(piece_squares.T)] = 1
-        obs["heuristic"] = self._board_potential(obs["board"])
+        obs["heuristic"], obs["holes"] = self._board_potential(obs["board"])
+
+        
+
+
 
         return obs
 
@@ -70,19 +71,17 @@ class TetrisEnv(gym.Env):
         highest = board.shape[1] - np.argmax(np.flip(board, 1), axis=1)
         highest = np.where(highest == board.shape[1], 0, highest)
 
-        # spikiness penalty (ignore top 2 variances for well)
-        diffs = np.abs(np.diff(highest))
-        top2 = diffs[np.argpartition(diffs, -2)[-2:]]
-        spikiness = self.PENALTY_COEFFS[0] * np.sum(diffs) - np.sum(top2)
-
         # holes penalty
         holes = (np.sum(highest) - np.sum(board))
 
-        # height penalty (comfort zone is around 7 ish)
-        max_height = np.max(highest)
-        discomfort = self.PENALTY_COEFFS[2] * np.abs(max_height - 7)
+        hole_pos = np.zeros(board.shape[0])
+        for i in range(board.shape[0]):
+            if highest[i] != 0:
+                hole_pos[i] = highest[i] - np.argmin(np.flip(board[i, :highest[i]]))
+                if hole_pos[i] == highest[i]:
+                    hole_pos[i] = 0
 
-        return np.concatenate((highest, np.array([holes])))
+        return np.concatenate((highest, np.array([holes]))), hole_pos
 
 
     def reset(self, seed=None, return_info=False, options=None):

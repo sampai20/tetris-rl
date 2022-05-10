@@ -527,15 +527,30 @@ if __name__ == '__main__':
     import time
 
     board = np.array([
-        [1, 1, 1, 1, 1, 1, 1, 1, -1, 1],
-        [1, 1, 1, 1, 1, 1, 1, -1, -1, -1],
-        [1, 1, 1, 1, 1, 1, 1, 1, -1, -1]
+        [7, 7, 7, 7, 7, 7, 7, 7, -1, 7],
+        [7, 7, 7, 7, 7, 7, 7, -1, -1, -1],
+        [7, 7, 7, 7, 7, 7, 7, 7, -1, -1]
     ]).T
     board = np.pad(board, ((0, 0), (0, 23 - board.shape[1])), mode='constant', constant_values=(-1, -1)) # type: ignore
     engine = TetrisEngine()
-    engine.add_garbage(5)
     engine.bags[0][0] = 3
+    engine._hard_drop()
+    engine.render()
+    input()
+    engine.add_garbage(5)
+    engine.render()
+    input()
+    for state, move, reward in engine._get_next_states():
+        engine.board = state.board.copy()
+        engine.render()
+        print(reward, move)
+        state.close()
+        time.sleep(0.2)
 
+
+
+
+"""
     while not engine.game_over:
         engine.render()
         # print(engine.vis_board())
@@ -546,15 +561,4 @@ if __name__ == '__main__':
             print(e)
         print(engine.held_piece)
         time.sleep(0.01)
-
 """
-    for state, move, reward in engine._get_next_states_hold():
-        state.render()
-        print(reward, move)
-        input()
-        state.close()
-"""
-
-
-
-

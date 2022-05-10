@@ -1,6 +1,8 @@
 from TetrisEnv import TetrisEnv
 from models.HeuristicOnly import HeuristicNetwork
 from models.ConvBased import ConvBasedNetwork
+from models.HeuristicWithHoles import HeuristicHoleNetwork
+import time
 
 from dqn import GAMMA, tensor_dict_stack, obs_to_tensor
 import torch
@@ -11,9 +13,9 @@ import time
 device = torch.device('cpu')
 
 # pick model
-DQNetwork = HeuristicNetwork
+DQNetwork = HeuristicHoleNetwork
 model = DQNetwork()
-model_save = 'data/heur_hold/model_2200'
+model_save = 'data/heur_hole_network/model_4000'
 model.load_state_dict(torch.load(model_save))
 model.eval()
 
@@ -43,7 +45,8 @@ def run_eval():
     state = env.reset()
     pieces = 0
     done = False
-    GARB_PROB = 0.07
+    GARB_PROB = 0
+    start_time = time.time()
     while True:
         future_states = env._get_next_obs_hold()
         a = select_action(future_states)
@@ -55,7 +58,7 @@ def run_eval():
 
         score += attack - 1
         pieces += 1
-        print(score, pieces, score / pieces)
+        print(score, pieces, score / pieces, pieces / (time.time() - start_time))
 
 
         if not np.all(exp_board == state['board']):

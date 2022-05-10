@@ -1,5 +1,4 @@
 experiments/*
-tetris_env/__pycache__/*
+*.pyc
 tetris_env/data/*
 data/*
-__pycache__/*
